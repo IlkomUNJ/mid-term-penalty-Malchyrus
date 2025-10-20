@@ -1,98 +1,125 @@
 #include "drawingcanvas.h"
+#include <QPainter>
+#include <QMouseEvent>
+#include <QDebug>
+#include <QColor>
+#include <cmath>
 
-DrawingCanvas::DrawingCanvas(QWidget *parent)  {
-    // Set a minimum size for the canvas
-    setMinimumSize(this->WINDOW_WIDTH, this->WINDOW_HEIGHT);
-    // Set a solid background color
-    setStyleSheet("background-color: white; border: 1px solid gray;");
+// --- Define Constants for Pattern Check (Goal 2: The justification for 50 goes in report.md) ---
+const int PATTERN_RED_PIXEL_THRESHOLD = 50;
+const QRgb RED_LINE_COLOR = QColor(Qt::red).rgb();
+
+// --- Helper Function: Check Window for Red Line Pixels ---
+bool DrawingCanvas::checkWindowForPattern(const QImage& image, int x, int y, int size) {
+    int redPixelCount = 0;
+
+    // Safety check: ensure window is within the image bounds
+    if (x < 0 || y < 0 || x + size > image.width() || y + size > image.height()) {
+        return false;
+    }
+
+    for (int i = x; i < x + size; ++i) {
+        for (int j = y; j < y + size; ++j) {
+            // Check if the pixel color is the red line color
+            if (image.pixel(i, j) == RED_LINE_COLOR) {
+                redPixelCount++;
+            }
+        }
+    }
+
+    // Pattern Criteria Check
+    if (redPixelCount >= PATTERN_RED_PIXEL_THRESHOLD) {
+        // Goal 2: "DUMP ALL NON EMPTY WINDOWS" logging
+        qDebug() << "DUMP: Window at (" << x << "," << y << ") has"
+                 << redPixelCount << "red pixels. (Segment piece detected)";
+        return true;
+    }
+
+    return false;
 }
 
-void DrawingCanvas::clearPoints(){
-    m_points.clear();
-    // Trigger a repaint to clear the canvas
+// --- Constructor and Basic Events ---
+DrawingCanvas::DrawingCanvas(QWidget *parent) : QWidget(parent) {
+    // Setting a default size, though MainWindow manages window size
+    setMinimumSize(400, 400);
+}
+
+void DrawingCanvas::mousePressEvent(QMouseEvent *event) {
+    points.append(event->pos());
+    update();
+}
+
+void DrawingCanvas::clearAll() {
+    points.clear();
+    detectedWindows.clear();
+    isPaintLinesClicked = false;
     update();
 }
 
 void DrawingCanvas::paintLines(){
-    /* Todo
-     * Implement lines drawing per even pair
-    */
-
     isPaintLinesClicked = true;
     update();
 }
 
-void DrawingCanvas::segmentDetection(){
-    QPixmap pixmap = this->grab(); //
+// --- Segment Detection (Pixel-Based Sliding Window) ---
+void DrawingCanvas::segmentDetection() {
+    detectedWindows.clear();
+
+    // Grab the current state of the drawing (including red lines)
+    QPixmap pixmap = this->grab();
     QImage image = pixmap.toImage();
 
-    cout << "image width " << image.width() << endl;
-    cout << "image height " << image.height() << endl;
+    const int W = windowSize;
+    const int H = windowSize;
+    // Stride equals size for non-overlapping windows (simpler detection)
+    const int STRIDE = windowSize;
 
-    //To not crash we set initial size of the matrix
-    vector<CustomMatrix> windows(image.width()*image.height());
+    qDebug() << "Starting detection with window size:" << W << "x" << H;
 
-    // Get the pixel value as an ARGB integer (QRgb is a typedef for unsigned int)
-    for(int i = 1; i < image.width()-1;i++){
-        for(int j = 1; j < image.height()-1;j++){
-            bool local_window[3][3] = {false};
+    // Slide the Window across the canvas
+    for (int y = 0; y <= image.height() - H; y += STRIDE) {
+        for (int x = 0; x <= image.width() - W; x += STRIDE) {
 
-            for(int m=-1;m<=1;m++){
-                for(int n=-1;n<=1;n++){
-                    QRgb rgbValue = image.pixel(i+m, j+n);
-                    local_window[m+1][n+1] = (rgbValue != 0xffffffff);
-                }
+            // Check the window content against the pattern criteria (Goal 2)
+            if (checkWindowForPattern(image, x, y, W)) {
+                // Goal 3: Store the detected window's bounding box
+                detectedWindows.append(QRect(x, y, W, H));
             }
-
-            CustomMatrix mat(local_window);
-
-            windows.push_back(mat);
         }
     }
-    return;
+
+    qDebug() << "Total segments detected:" << detectedWindows.size();
+    update(); // Redraw to show the purple rectangles (detections)
 }
 
-void DrawingCanvas::paintEvent(QPaintEvent *event){
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    // Set up the pen and brush for drawing the points
-    QPen pen(Qt::blue, 5);
-    painter.setPen(pen);
-    painter.setBrush(QBrush(Qt::blue));
-
-    // Draw a small circle at each stored point
-    for (const QPoint& point : std::as_const(m_points)) {
-        painter.drawEllipse(point, 3, 3);
-    }
-
-    if(isPaintLinesClicked){
-        cout << "paint lines block is called" << endl;
-        pen.setColor(Qt::red);
-        pen.setWidth(4); // 4-pixel wide line
-        pen.setStyle(Qt::SolidLine);
-        painter.setPen(pen);
-
-        // Set the painter's pen to our custom pen.
-        painter.setPen(pen);
-
-        for(int i=0;i<m_points.size()-1;i+=2){
-            //cout << m_points[i].x() << endl;
-            painter.drawLine(m_points[i], m_points[i+1]);
-        }
-        isPaintLinesClicked = false;
-
-        //return painter pen to blue
-        pen.setColor(Qt::blue);
-        painter.setPen(pen);
-    }
-}
-
-void DrawingCanvas::mousePressEvent(QMouseEvent *event) {
-    // Add the mouse click position to our vector of points
-    m_points.append(event->pos());
-    // Trigger a repaint
+void DrawingCanvas::visualizeDetections() {
     update();
 }
 
+void DrawingCanvas::paintEvent(QPaintEvent *event) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
 
+    QPen dotPen(Qt::blue, 5);
+    painter.setPen(dotPen);
+    painter.setBrush(QBrush(Qt::blue));
+    for (const QPointF &pt : points) {
+        painter.drawEllipse(pt, 3, 3);
+    }
+
+    if (isPaintLinesClicked && points.size() >= 2) {
+        QPen linePen(Qt::red, 4); // 4-pixel wide line
+        painter.setPen(linePen);
+
+        // Draw lines per even pair (dot 1 to 2, 3 to 4, etc.)
+        for(int i = 0; i < points.size() - 1; i += 2) {
+            painter.drawLine(points[i], points[i+1]);
+        }
+    }
+
+    painter.setPen(QPen(Qt::magenta, 2));
+    painter.setBrush(Qt::NoBrush);
+    for (const QRect &r : detectedWindows) {
+        painter.drawRect(r);
+    }
+}

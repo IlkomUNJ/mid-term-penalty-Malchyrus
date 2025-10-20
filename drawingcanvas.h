@@ -3,44 +3,41 @@
 
 #include <QWidget>
 #include <QVector>
-#include <QPoint>
-#include <QPainter>
-#include <QMouseEvent>
-#include <iostream>
-#include <iomanip>
-#include <QPixmap>
-#include "CustomMatrix.h"
-
-using namespace std;
-using Array3x3 = std::array<std::array<bool, 3>, 3>;
-
+#include <QPointF>
+#include <QRect>
+#include <QImage>
 
 class DrawingCanvas : public QWidget
 {
     Q_OBJECT
-private:
-    const int WINDOW_WIDTH=600;
-    const int WINDOW_HEIGHT=400;
-
 public:
     explicit DrawingCanvas(QWidget *parent = nullptr);
+    void clearAll();
 
-    // Slot to clear all points from the canvas
-    void clearPoints();
-    void paintLines();
-    void segmentDetection();
+    int getWindowSize() const { return windowSize; } // Getter
+public slots:
+    void setWindowSize(int size) { windowSize = size; update(); } // Setter/Slot
+    // -----------------------------------------------------------------
 
 protected:
-    // Overridden method to handle painting on the widget
+    void mousePressEvent(QMouseEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
 
-    // Overridden method to handle mouse clicks
-    void mousePressEvent(QMouseEvent *event) override;
+    // NOTE: public slots: should be moved here for best practice,
+    // but can remain public slots: above if you prefer.
+public slots:
+    void segmentDetection();    // Renamed from detectWindows, check your .cpp for consistency
+    void visualizeDetections();
+    void paintLines();
 
 private:
-    // A vector to store all the points drawn by the user
-    QVector<QPoint> m_points;
-
+    QVector<QPointF> points;
+    QVector<QRect> detectedWindows;
+    int windowSize = 20; // The default experimental size
     bool isPaintLinesClicked = false;
+
+    // Check for segment pattern (red pixels) inside the window
+    bool checkWindowForPattern(const QImage& image, int x, int y, int size);
 };
+
 #endif // DRAWINGCANVAS_H

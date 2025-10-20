@@ -5,12 +5,12 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     // Create the main window.
-    MainWindow w;
+    MainWindow win;
     //w.setWindowTitle("Qt Line Drawing Example");
     //LineWidget *lineWidget = new LineWidget(&w);
     // Set our custom widget as the central widget of the main window.
     //w.setCentralWidget(lineWidget);
-    w.show();
+    win.show();
     // Show the main window.
     return a.exec();
 }
